@@ -49,54 +49,6 @@ def format_markdown_safely(markdown_text: str) -> str:
         
         return markdown_text
 
-def prepare_messages_for_display(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Prepare messages for display by extracting thinking sections and
-    formatting markdown content.
-    
-    Args:
-        messages: List of message dictionaries
-        
-    Returns:
-        List of processed message dictionaries
-    """
-    processed_messages = []
-    
-    for message in messages:
-        processed_message = message.copy()
-        if message["role"] == "assistant":
-            thinking, cleaned_content = extract_thinking(message["content"])
-            
-            if thinking:
-                processed_message["thinking"] = thinking
-            
-            processed_message["content"] = cleaned_content   
-            processed_message["formatted_content"] = format_markdown_safely(cleaned_content)
-        
-        processed_messages.append(processed_message)
-    
-    return processed_messages
-
-def convert_messages_for_langchain(messages: List[Dict[str, Any]]) -> List[HumanMessage | AIMessage]:
-    """
-    Convert the session state messages to LangChain format for the agent.
-    
-    Args:
-        messages: List of message dictionaries from session state
-        
-    Returns:
-        List of LangChain message objects
-    """
-    langchain_messages = []
-    
-    for message in messages:
-        if message["role"] == "user":
-            langchain_messages.append(HumanMessage(content=message["content"]))
-        elif message["role"] == "assistant":
-            langchain_messages.append(AIMessage(content=message["content"]))
-    
-    return langchain_messages
-
 def get_agent_icon_html(is_thinking: bool = False) -> str:
     """
     Generate HTML for the agent icon, optionally with a loading spinner.

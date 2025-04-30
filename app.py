@@ -6,8 +6,7 @@ from typing import Any
 import random
 
 from graph import run_query_with_history
-from utils import extract_thinking, format_markdown_safely, prepare_messages_for_display
-from langchain_core.messages import HumanMessage, AIMessage
+from utils import extract_thinking, format_markdown_safely
 
 
 st.set_page_config(
@@ -26,7 +25,7 @@ st.markdown("""
     
     .thinking-text {
         font-size: 0.85rem;
-        color: rgba(70, 70, 70, 0.85);
+        color: #FAF9F6;
         background-color: #f8f9fa;
         padding: 12px;
         border-radius: 8px;
@@ -121,7 +120,6 @@ st.markdown("""
     .markdown-content h1, .markdown-content h2, .markdown-content h3 {
         margin-top: 1em;
         margin-bottom: 0.5em;
-        color: white;
     }
     
     .markdown-content p {
@@ -135,7 +133,7 @@ st.markdown("""
     
     .markdown-content code {
         font-family: monospace;
-        background-color: ;
+        background-color: #36454F ;
         padding: 2px 4px;
         border-radius: 3px;
     }
@@ -149,13 +147,13 @@ st.markdown("""
     
     
     .tool-card {
-        background-color: white;
+        background-color: rgba(54, 69, 79, 0.50);
         border-radius: 10px;
         padding: 15px;
         margin: 10px 5px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         transition: transform 0.2s, box-shadow 0.2s;
-        color: black;
+        color: #FAF9F6;
     }
     
     .tool-card:hover {
@@ -234,6 +232,42 @@ if 'thread_id' not in st.session_state:
 if 'thinking' not in st.session_state:
     st.session_state.thinking = False
 
+if 'current_tool' not in st.session_state:
+    st.session_state.current_tool = None
+
+if 'used_tools' not in st.session_state:
+    st.session_state.used_tools = set()
+
+if 'input_value' not in st.session_state:
+    st.session_state.input_value = ""
+
+
+def get_thinking_message(tools_used):
+    """
+    Get a human-readable message for the tools being used.
+    
+    Args:
+        tools_used: List of tools being used
+        
+    Returns:
+        A human-readable message
+    """
+    tool_messages = {
+        'arxiv': '📑 Searching through research papers...',
+        'wikipedia': '🌐 Looking through Wikipedia articles...',
+        'tavily_search_results_json': '🔎 Searching the web...'
+    }
+    
+    if st.session_state.current_tool:
+        return tool_messages.get(st.session_state.current_tool, '🧠 Processing your request...')
+    
+    if tools_used:
+        first_tool = tools_used[0]
+        return tool_messages.get(first_tool, '🧠 Processing your request...')
+    
+    # Default thinking message
+    return '🧠 Thinking about your question...'
+
 
 def stream_response(response):
     """
@@ -244,7 +278,8 @@ def stream_response(response):
     """
     placeholder = st.empty()
     thinking, cleaned_response = extract_thinking(response)
-    print(response)
+    
+    st.session_state.thinking = False
     
     displayed_text = ""
     for i in range(len(cleaned_response)):
@@ -258,10 +293,8 @@ def stream_response(response):
         </div>
         """, unsafe_allow_html=True)
         
-        # Adjust the delay to control streaming speed
         time.sleep(random.uniform(0.01, 0.03))
     
-    # Final display without cursor
     placeholder.markdown(f"""
     <div class="chat-message">
         <div class="agent-icon">🤖</div>
@@ -292,16 +325,8 @@ def process_query(user_query):
     Returns:
         The agent's response
     """
-    # Set thinking state to true
     st.session_state.thinking = True
     
-    # Add user message to history
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_query
-    })
-    
-    # Call the agent
     try:
         response = run_query_with_history(st.session_state.messages, st.session_state.thread_id)
         
@@ -311,13 +336,20 @@ def process_query(user_query):
             agent_response = agent_message.content
             
             # Process the response to extract thinking
-            thinking, cleaned_response = extract_thinking(agent_response)
+            thinking, _ = extract_thinking(agent_response)
+            
+            # Get tools used from the response
+            tools_used = response.get('tools_used', [])
+            
+            # Set current tool if any tools were used
+            st.session_state.current_tool = tools_used[0] if tools_used else None
             
             # Add agent message to history
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": agent_response,
-                "thinking": thinking
+                "thinking": thinking,
+                "used_tools": tools_used
             })
             
             return agent_response
@@ -343,8 +375,8 @@ def process_query(user_query):
         
         return error_msg
     finally:
-        # Set thinking state to false
         st.session_state.thinking = False
+        st.session_state.current_tool = None
 
 
 with st.sidebar:
@@ -379,7 +411,6 @@ with st.sidebar:
         
     st.divider()
     
-    # Settings
     st.subheader("⚙️ Settings")
     
     # Clear conversation button
@@ -418,7 +449,7 @@ with st.sidebar:
 main_container = st.container()
 
 with main_container:
-    st.markdown('<h1>Research any topic you want!</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 style="text-align: center; color: white; ;">Research any topic you want</h1>', unsafe_allow_html=True)
     st.markdown('<div class="chat-container" id="chat-container">', unsafe_allow_html=True)
     
     # Display conversation history
@@ -443,12 +474,31 @@ with main_container:
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
-            # Display thinking if available
+
             if thinking:
                 st.markdown(f"""
                 <div class="thinking-text">
                     <strong>Thinking process:</strong><br>{thinking}
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Display used tools if available
+            used_tools = message.get("used_tools", [])
+            if used_tools:
+                tool_emojis = {
+                    'arxiv': '📑',
+                    'wikipedia': '🌐',
+                    'tavily_search_results_json': '🔎'
+                }
+                tool_names = {
+                    'arxiv': 'ArXiv',
+                    'wikipedia': 'Wikipedia',
+                    'tavily_search_results_json': 'Web Search'
+                }
+                tools_text = "    ".join([f"{tool_emojis.get(tool, '')} {tool_names.get(tool, tool)}" for tool in used_tools])
+                st.markdown(f"""
+                <div style="background-color: rgba(54, 69, 79, 0.45);" class="thinking-text">
+                    <strong>Tools used:</strong><br>{tools_text}
                 </div>
                 """, unsafe_allow_html=True)
     
@@ -456,11 +506,11 @@ with main_container:
         st.session_state.message_container = st.empty()
     
     if st.session_state.thinking:
-        st.markdown("""
+        st.markdown(f"""
         <div class="chat-message">
             <div class="agent-icon loading-icon">🤖</div>
             <div class="agent-message">
-                <div class="markdown-content">Thinking...</div>
+                <div class="markdown-content">{get_thinking_message(st.session_state.messages[-1].get('used_tools', []))}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -471,30 +521,26 @@ with main_container:
 st.markdown('<div class="input-area">', unsafe_allow_html=True)
 col1, col2 = st.columns([6, 1])
 with col1:
-    user_input = st.text_input("Ask me anything...", key="user_input", label_visibility="collapsed")
+    user_input = st.text_input("Ask me anything...", key="user_input", label_visibility="collapsed", value=st.session_state.input_value)
 with col2:
     submit_button = st.button("Send", use_container_width=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 
 if submit_button and user_input:
-    # First add user's message to session state
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
     })
     
-    # Then process and display the response
+    st.session_state.input_value = ""
+    
     with main_container:
-        # Set thinking state
         st.session_state.thinking = True
-        
-        # Force a rerun to show the user's message and thinking state
         st.rerun()
 
 
 if st.session_state.thinking:
-    # Get the last user message
     last_user_message = None
     for msg in reversed(st.session_state.messages):
         if msg["role"] == "user":
@@ -502,13 +548,12 @@ if st.session_state.thinking:
             break
     
     if last_user_message:
-        # Process the query
         response = process_query(last_user_message)
         
-        # Stream the response
+        tools_used = st.session_state.messages[-1].get('used_tools', []) if st.session_state.messages else []
+        
         stream_response(response)
         
-        # Force a rerun to update the UI
         st.rerun()
 
 if __name__ == "__main__":
